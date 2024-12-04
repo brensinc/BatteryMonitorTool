@@ -33,7 +33,7 @@ class monitor(object):
             payload["avatar_url"] = avatar_url
         try:
             response = requests.post(webhook_url, json=payload)
-            response.raise_for_status() 
+            response.raise_for_status()
             print(f"Message sent successfully: {response.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"Failed to send message: {e}. Check webhook_url.")
