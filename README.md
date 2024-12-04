@@ -20,22 +20,22 @@ This project provides a comprehensive solution for monitoring a battery's **Stat
 - **pandas** for efficient data handling and processing.
 
 ## Setup and Installation
-1. Clone this repository:
+1. Clone this repository: <br>
    ```bash
    git clone https://github.com/brensinc/BatteryMonitorTool.git
    cd BatteryMonitorTool
 
 
-2. Install dependencies:
+2. Install dependencies: <br>
    pip install -r requirements.txt
    
 3. Set up Discord integration:
 
-4. Create a Discord webhook.
+4. Create a Discord webhook. <br>
    Add the webhook url as variable webhook_url in status_monitor.py:
 
 ## Test the application:
-- Modify test_battery.py to create battery object to your specifications.
+- Modify test_battery.py to create battery object to your specifications. <br>
    python test_battery.py
    Access the dashboard at http://127.0.0.1:8050/.
 
