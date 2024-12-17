@@ -1,186 +1,102 @@
 import numpy as np
 import plotly.graph_objects as go
 from status_monitor import monitor
+import matplotlib.pyplot as plt
 
-class battery(object):
-    def __init__(self, V_ocv, C_bat, soc, temp = 25):
-        """
-        self.V_ocv : 
-        self.soc :
-        self.C_bat : 
-        self.R_s
-        self.R
-        """
-        self.V_ocv = V_ocv
-        self.C_bat = C_bat
-        self.soc = soc
-        self.temp = temp
-   
+class Battery:
+    def __init__(self, capacity, initial_soc=100, initial_soh=100):
+        # Battery parameters
+        self.capacity = capacity
+        self.soc = initial_soc
+        self.soh = initial_soh
 
-    # Simple charge/discharge model without aging dynamics
-    def discharge(self, I):
-        self.soc += -(1/self.C_bat) * I
+        # Equivalent circuit model parameters
+        self.R0 = 0.05  
+        self.R1_charge = 0.02 
+        self.C1_charge = 1000  
+        self.R2_charge = 0.05
+        self.C2_charge = 5000 
 
-        if self.soc > 1:
-            self.soc = 1
-        elif self.soc < 0.2:
-            self.soc = 0.2
-
-
-    def random_discharge(self, time = 3600, current_limit = 0.1, notification_cooldown = 600, plot = True, dashboard = False):
-        # Generate random charge/discharge sequence
-        discharge_series_random = np.random.uniform(-current_limit, current_limit, time)
-        battery_soc_random = []
-
-
-        for discharge_step in discharge_series_random:
-            self.discharge(discharge_step)
-            battery_soc_random.append(self.soc)
-
-        charge_monitor = monitor()
-        charge_cooldown = notification_cooldown
-
-        for soc in battery_soc_random:
-            if soc <= 0.20 and not charge_cooldown:
-                message = "🚨 Alert: Battery SOC Below 20%!"
-                username = "SOC Bot"
-                charge_monitor.send_discord_alert(message, username)
-                charge_cooldown = notification_cooldown
-            elif charge_cooldown > 0:
-                charge_cooldown -= 1
-
-        if plot:
-            # Create the initial figure
-            fig = go.Figure()
-
-            # Add the SOC line
-            fig.add_trace(go.Scatter(
-                y=battery_soc_random, 
-                mode='lines',
-                name='Battery SOC',
-
-            ))
-
-            # Add the discharge series line
-            fig.add_trace(go.Scatter(
-                y=discharge_series_random, 
-                mode='lines',
-                name='Discharge Series',
-                line=dict(color='red')  # Optional styling
-            ))
-
-            # Update layout with titles
-            fig.update_layout(
-                xaxis_title="Time (seconds)", 
-                yaxis_title="SOC"
-            )
-
-            # Show the figure
-            # fig.show()
+        self.R1_discharge = 0.03  
+        self.C1_discharge = 1200 
+        self.R2_discharge = 0.06  
+        self.C2_discharge = 5500  
         
-        if dashboard:
-            charge_monitor.dash_app(battery_soc_random, discharge_series_random)
+        # Thermal parameters
+        self.temperature = 25 
 
+        # State variables for RC pairs
+        self.V1 = 0  
+        self.V2 = 0 
 
-    def constant_discharge(self, time = 3600, discharge_rate = 0.1, notification_cooldown = 600, plot = True, dashboard = False):
-        # Generate constant charge/discharge sequence
-        discharge_series_constant = [discharge_rate for i in range(time)]
-        battery_soc_constant = []
+        # Voltage output
+        self.voltage = 0
 
-        for discharge_step in discharge_series_constant:
-            self.discharge(discharge_step)
-            battery_soc_constant.append(self.soc)
+    def update_soc(self, current, duration):
+        # Ah consumed = current (A) × time (hours)
+        ah_consumed = current * (duration / 3600)
+        self.soc -= (ah_consumed / self.capacity) * 100
+        self.soc = max(0, min(100, self.soc)) 
+        
+    def equivalent_circuit_model(self, current, charge_mode=True):
+        # Select parameters based on charge/discharge
+        if charge_mode:
+            R1, C1, R2, C2 = self.R1_charge, self.C1_charge, self.R2_charge, self.C2_charge
+        else:
+            R1, C1, R2, C2 = self.R1_discharge, self.C1_discharge, self.R2_discharge, self.C2_discharge
 
+        # RC dynamics update
+        tau1 = R1 * C1
+        tau2 = R2 * C2
 
-        charge_monitor = monitor()
-        charge_cooldown = notification_cooldown
+        self.V1 += (current / C1 - self.V1 / tau1)
+        self.V2 += (current / C2 - self.V2 / tau2)
 
-        for soc in battery_soc_constant:
-            if soc <= 0.20 and not charge_cooldown:
-                message = "🚨 Alert: Battery SOC Below 20%!"
-                username = "SOC Bot"
-                charge_monitor.send_discord_alert(message, username)
-                charge_cooldown = notification_cooldown
-            elif charge_cooldown > 0:
-                charge_cooldown -= 1
+        # Calculate terminal voltage
+        open_circuit_voltage = 3.7 + (self.soc / 100) * 0.5
+        self.voltage = open_circuit_voltage - self.R0 * current - self.V1 - self.V2
 
-        if plot:
-            # Create the initial figure
-            fig = go.Figure()
+    def simulate_step(self, current, charge_mode=True):
+        # Simulate a single 1-second step
+        self.update_soc(current, 1)
+        self.equivalent_circuit_model(current, charge_mode)
 
-            # Add the SOC line
-            fig.add_trace(go.Scatter(
-                y=battery_soc_constant, 
-                mode='lines',
-                name='Battery SOC'
-            ))
+    def run_simulation(self, current_profile, charge_mode_profile, dashboard=True, notification_cooldown=600):
+        """
+        Run an iterative simulation for a time-varying current profile.
 
-            # Add the discharge series line
-            fig.add_trace(go.Scatter(
-                y=discharge_series_constant, 
-                mode='lines',
-                name='Discharge Series',
-                line=dict(color='red')  # Optional styling
-            ))
+        Parameters:
+        - current_profile: List of currents (A) for each second.
+        - charge_mode_profile: List of booleans indicating charge (True) or discharge (False).
 
-            # Update layout with titles
-            fig.update_layout(
-                xaxis_title="Time (seconds)", 
-                yaxis_title="SOC"
-            )
+        Returns:
+        - results: A dictionary with time-series data for SOC, SOH, voltage, and temperature.
+        """
+        results = {
+            "time": [],
+            "soc": [],
+            "soh": [],
+            "voltage": [],
+            "temperature": []
+        }
 
-            # Show the figure
-            # fig.show()
+        charge_monitor = monitor(notification_cooldown)
+        
+
+        for t, (current, charge_mode) in enumerate(zip(current_profile, charge_mode_profile)):
+            self.simulate_step(current, charge_mode)
+            results["time"].append(t)
+            results["soc"].append(self.soc)
+            results["soh"].append(self.soh)
+            results["voltage"].append(self.voltage)
+            results["temperature"].append(self.temperature)
+            charge_monitor.check_soc(self.soc) # Check to see soc is above 20%
 
         if dashboard:
-            charge_monitor.dash_app(battery_soc_constant, discharge_series_constant)
+            charge_monitor.dash_app(results, current_profile)
 
+        return results
 
-    ### WRITE CODE TO ENCORPORATE AGING DYNAMICS ###
-            
-    # def __init__(self, V_ocv, C_bat, soc, temp):
-    #     """
-    #     self.V_ocv : 
-    #     self.soc :
-    #     self.C_bat : 
-    #     self.R_s
-    #     self.R
-    #     """
-    #     self.V_ocv = V_ocv
-    #     self.soc = soc
-    #     self.C_bat = C_bat
-
-    #     self.T_s = temp
-    #     self.T_c = temp
-
-
-    # def electrical_model(self, I):
-    #     self.V = []
-    #     self.R = __
-    #     self.C = __
-
-    #     if I >= 0:
-    #         R_s = __
-    #         R_u = __
-    #         C_s = __
-
-    #     else:
-    #         R_s = __
-    #         R_u = __
-    #         C_s = __
-
-    #     # Terminal voltage of electrical model
-    #     V_t = self.V_ocv - I * R_s - sum(self.V)
-        
-    #     # Update soc of the battery
-    #     self.soc += (-1/self.C_bat) * I
-        
-    #     # Update voltage drops of RC pairs
-    #     self.V = [-1/(self.R[i] * self.C[i]) * self.V + (1/self.C[i]) * I for i in range(len(self.V))]
-        
-
-    # def thermal_model(self):
-    #     Q = I * (self.V_ocv - V_t)
-
-    #     self.T_c += Q/C_c + (self.T_s - self.T_c) / (self.R_c * self.C_c)
-    #     self.T_s += (self.T_f - self.T_s) / (R_u * C_s) - (self.T_s - self.T_c) / (R_c * C_s)
+    def __repr__(self):
+        return (f"Battery(SOC={self.soc:.2f}%, SOH={self.soh:.2f}%, "
+                f"Voltage={self.voltage:.2f}V, Temperature={self.temperature:.2f}°C)")
