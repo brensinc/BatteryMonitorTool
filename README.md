@@ -50,7 +50,7 @@ This project provides a comprehensive solution for simulating, monitoring, and a
 ## Setup and Installation
 
 ### Clone the Repository
-```bash
+bash
 git clone https://github.com/brensinc/BatteryMonitorTool.git
 cd BatteryMonitorTool
 
