@@ -10,8 +10,8 @@ import plotly.express as px
 battery = Battery(capacity=2.6, initial_soc=100)
 
 # Define a current profile
-current_profile = [50 if t % 2 == 0 else -30 for t in range(3600)]  # Alternating currents
-charge_mode_profile = [False if t % 2 == 0 else True for t in range(3600)]  # Alternate modes
+current_profile = [np.sin(i * np.pi/4) * 5 + 5 for i in range(3600)]
+charge_mode_profile = [False if t % 2 == 0 else True for t in range(3600)]  # Alternate between charge and discharge
 
 # Run the simulation
 results = battery.run_simulation(current_profile, charge_mode_profile, dashboard = True, notification_cooldown=600)

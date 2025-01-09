@@ -58,7 +58,10 @@ class monitor(object):
                 id="SOC-Current",
                 figure=go.Figure(
                     data=[
-                        go.Scatter(y=results["soc"], mode="lines", name="State of Charge (SOC)"),
+                        go.Scatter(y=results["soc"], mode="lines", name="SOC"),
+                        go.Scatter(y=results["measured_soc"], mode="lines", name="Measured SOC"),
+                        go.Scatter(y=results["estimated_soc"], mode="lines", name="Estimated SOC"),
+
                         go.Scatter(y=current_profile, mode="lines", name="Current (A)")
                     ]
                 ).update_layout(
@@ -66,19 +69,19 @@ class monitor(object):
                     xaxis_title="Time (seconds)",
                     yaxis_title="SOC"
                 )
-            ),
-            dcc.Graph(
-                id="SOC-Voltage",
-                figure=go.Figure(
-                    data=[
-                        go.Scatter(x=results["voltage"], y=results["soc"], mode="lines", name="SOC")
-                    ]
-                ).update_layout(
-                    title="Battery SOC and Voltage Over Time",
-                    xaxis_title="Voltage",
-                    yaxis_title="SOC"
-                )
             )
+            # ,dcc.Graph(
+            #     id="SOC-Voltage",
+            #     figure=go.Figure(
+            #         data=[
+            #             go.Scatter(x=results["voltage"], y=results["soc"], mode="lines", name="SOC")
+            #         ]
+            #     ).update_layout(
+            #         title="Battery SOC and Voltage Over Time",
+            #         xaxis_title="Voltage",
+            #         yaxis_title="SOC"
+            #     )
+            # )
         ])
 
         # Run the app

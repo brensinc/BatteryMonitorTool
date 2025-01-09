@@ -2,12 +2,14 @@ import numpy as np
 import plotly.graph_objects as go
 from status_monitor import monitor
 import matplotlib.pyplot as plt
+from kalman_filter import KalmanFilter
 
 class Battery:
     def __init__(self, capacity, initial_soc=100, initial_soh=100):
         # Battery parameters
         self.capacity = capacity
         self.soc = initial_soc
+        self.soc_measured = initial_soc
         self.soh = initial_soh
 
         # Equivalent circuit model parameters
@@ -32,11 +34,17 @@ class Battery:
         # Voltage output
         self.voltage = 0
 
+        # Initialize Kalman Filter object
+        self.kalman_filter = KalmanFilter(initial_soc, process_var=0.0001, measurement_var=0.01)
+
+
     def update_soc(self, current, duration):
         # Ah consumed = current (A) × time (hours)
         ah_consumed = current * (duration / 3600)
         self.soc -= (ah_consumed / self.capacity) * 100
-        self.soc = max(0, min(100, self.soc)) 
+        self.soc = max(0, min(100, self.soc))
+        self.soc_measured = self.soc + np.random.normal(0, 3) # Measured SOC is SOC + noise
+
         
     def equivalent_circuit_model(self, current, charge_mode=True):
         # Select parameters based on charge/discharge
@@ -53,8 +61,8 @@ class Battery:
         self.V2 += (current / C2 - self.V2 / tau2)
 
         # Calculate terminal voltage
-        open_circuit_voltage = 3.7 + (self.soc / 100) * 0.5
-        self.voltage = open_circuit_voltage - self.R0 * current - self.V1 - self.V2
+        self.ocv = 3.7 + (self.soc / 100) * 0.5
+        self.voltage = self.ocv - self.R0 * current - self.V1 - self.V2
 
     def simulate_step(self, current, charge_mode=True):
         # Simulate a single 1-second step
@@ -75,6 +83,8 @@ class Battery:
         results = {
             "time": [],
             "soc": [],
+            "measured_soc": [],
+            "estimated_soc": [],
             "soh": [],
             "voltage": [],
             "temperature": []
@@ -86,17 +96,26 @@ class Battery:
         for t, (current, charge_mode) in enumerate(zip(current_profile, charge_mode_profile)):
             self.simulate_step(current, charge_mode)
             results["time"].append(t)
+            results["temperature"].append(self.temperature)
+            charge_monitor.check_soc(self.soc_measured) # Check to see soc is above 20%
+
+            self.kalman_filter.predict()
+            self.kalman_filter.update(self.soc_measured)
+            results["measured_soc"].append(self.soc_measured)
             results["soc"].append(self.soc)
+            results["estimated_soc"].append(self.kalman_filter.get_state())
+
             results["soh"].append(self.soh)
             results["voltage"].append(self.voltage)
-            results["temperature"].append(self.temperature)
-            charge_monitor.check_soc(self.soc) # Check to see soc is above 20%
+            
 
         if dashboard:
             charge_monitor.dash_app(results, current_profile)
 
         return results
 
+
     def __repr__(self):
-        return (f"Battery(SOC={self.soc:.2f}%, SOH={self.soh:.2f}%, "
+        return (f"Battery(SOC={self.soc_measured:.2f}%, SOH={self.soh:.2f}%, "
                 f"Voltage={self.voltage:.2f}V, Temperature={self.temperature:.2f}°C)")
+    
